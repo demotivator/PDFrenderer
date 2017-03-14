@@ -18,18 +18,18 @@
  */
 package com.sun.pdfview.colorspace;
 
-import java.awt.Color;
+import com.sun.pdfview.PDFObject;
+import com.sun.pdfview.PDFPaint;
+import com.sun.pdfview.PDFParseException;
+import com.sun.pdfview.function.PDFFunction;
+
+import java.awt.*;
 import java.awt.color.ColorSpace;
 import java.awt.color.ICC_ColorSpace;
 import java.awt.color.ICC_Profile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Map;
-
-import com.sun.pdfview.PDFObject;
-import com.sun.pdfview.PDFPaint;
-import com.sun.pdfview.PDFParseException;
-import com.sun.pdfview.function.PDFFunction;
 
 
 /**
@@ -96,6 +96,8 @@ public class PDFColorSpace {
     public static PDFColorSpace getColorSpace(int name) {
         switch (name) {
         case COLORSPACE_GRAY:
+        case ColorSpace.CS_GRAY:
+        case ColorSpace.TYPE_GRAY:
             return graySpace;
 
         case COLORSPACE_RGB:
@@ -172,6 +174,9 @@ public class PDFColorSpace {
             try {
                 ByteArrayInputStream bais = new ByteArrayInputStream(ary[1].getStream());
                 ICC_Profile profile = ICC_Profile.getInstance(bais);
+                if (profile.getColorSpaceType() == ColorSpace.CS_GRAY || profile.getColorSpaceType() == ColorSpace.TYPE_GRAY) {
+                    return graySpace;
+                }
                 value = new PDFColorSpace(new ICC_ColorSpace(profile));
             } catch (IllegalArgumentException e) {
                 return getColorSpace(COLORSPACE_RGB);
