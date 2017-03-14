@@ -19,11 +19,14 @@
 package com.sun.pdfview.font.ttf;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.SortedMap;
 import java.util.TreeMap;
+
+import com.sun.pdfview.PDFDebugger;
 
 /**
  * Represents the TTF "cmap" table
@@ -38,7 +41,7 @@ public class CmapTable extends TrueTypeTable {
     /**
      * Holds the CMap subtables, sorted properly
      */
-    private SortedMap<CmapSubtable,CMap> subtables;
+    private final SortedMap<CmapSubtable,CMap> subtables;
     
     /** Creates a new instance of CmapTable */
     protected CmapTable() {
@@ -70,7 +73,23 @@ public class CmapTable extends TrueTypeTable {
      * Get all CMaps
      */
     public CMap[] getCMaps() {
-        Collection<CMap> c = this.subtables.values();
+        Collection<CMap> c = new ArrayList<CMap>();
+        
+        CMap cmap_3_1 = this.getCMap((short)3, (short)1);
+        if (cmap_3_1 != null) {
+        	c.add(cmap_3_1);
+        }
+        CMap cmap_1_0 = this.getCMap((short)1, (short)0);
+        if (cmap_1_0 != null) {
+        	c.add(cmap_1_0);
+        }
+
+        for (CMap cmap : this.subtables.values()) {
+        	if (!c.contains(cmap)) {
+        		c.add(cmap);
+        	}
+        }
+                ;
         CMap[] maps = new CMap[c.size()];
         
         c.toArray(maps);
@@ -111,10 +130,10 @@ public class CmapTable extends TrueTypeTable {
                     addCMap(platformID, platformSpecificID, cMap);
                 }
             } catch (Exception ex) {
-                System.out.println("Error reading map.  PlatformID=" +
+                PDFDebugger.debug("Error reading map.  PlatformID=" +
                                     platformID + ", PlatformSpecificID=" + 
                                     platformSpecificID);
-                System.out.println("Reason: " + ex);
+                PDFDebugger.debug("Reason: " + ex);
             }
         }
     }

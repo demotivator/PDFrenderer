@@ -584,11 +584,9 @@ public class PDFFile {
                 hm.put(name.getStringValue(), value);
             }
         }
-        //	System.out.println("End of dictionary at location "+raf.getFilePointer());
         if (!nextItemIs(">>")) {
             throw new PDFParseException("End of dictionary wasn't '>>'");
         }
-        //	System.out.println("Dictionary closed at location "+raf.getFilePointer());
         return new PDFObject(this, PDFObject.DICTIONARY, hm);
     }
 
@@ -953,7 +951,7 @@ public class PDFFile {
         // see if it's a dictionary.  If so, this could be a stream.
         PDFObject endkey = readObject(objNum, objGen, decrypter);
         if (endkey.getType() != PDFObject.KEYWORD && endkey.getType() != PDFObject.STREAM) {
-            System.out.println("WARNING: Expected 'stream' or 'endobj' but was " + endkey.getType() + " " + String.valueOf(endkey.getStringValue()));
+            PDFDebugger.debug("WARNING: Expected 'stream' or 'endobj' but was " + endkey.getType() + " " + String.valueOf(endkey.getStringValue()));
         }
         if (obj.getType() == PDFObject.DICTIONARY && endkey.getStringValue() != null && endkey.getStringValue().equals("stream")) {
             // skip until we see \n
@@ -968,7 +966,7 @@ public class PDFFile {
         // at this point, obj is the object, keyword should be "endobj"
         String endcheck = endkey.getStringValue();
         if (endcheck == null || !endcheck.equals("endobj")) {
-            System.out.println("WARNING: object at " + debugpos + " didn't end with 'endobj'");
+            PDFDebugger.debug("WARNING: object at " + debugpos + " didn't end with 'endobj'");
         }
         obj.setObjectId(objNum, objGen);
         return obj;
@@ -1003,8 +1001,7 @@ public class PDFFile {
         int ending = this.buf.position();
 
         if (!nextItemIs("endstream")) {
-            System.out.println("read " + length + " chars from " + start + " to " +
-                    ending);
+            PDFDebugger.debug("read " + length + " chars from " + start + " to " + ending);
             throw new PDFParseException("Stream ended inappropriately");
         }
 
@@ -1069,6 +1066,22 @@ public class PDFFile {
                 // skip a line
                 readLine();
 
+                if (refstart == 1) {// Check and try to fix incorrect Object Number Start
+                    int startPos = this.buf.position();
+                    try {
+                        byte[] refline = new byte[20];
+                        this.buf.get(refline);
+                        if (refline[17] == 'f') {// free
+                            PDFXref objIndex = new PDFXref(refline);
+                            if (objIndex.getID() == 0 && objIndex.getGeneration() == 65535) { // The highest generation number possible
+                                refstart--;
+                            }
+                        }
+                    } catch (Exception e) {// in case of error ignore
+                    }
+                    this.buf.position(startPos);
+                }
+
                 // extend the objIdx table, if necessary
                 if (refstart + reflen >= this.objIdx.length) {
                     PDFXref nobjIdx[] = new PDFXref[refstart + reflen];
@@ -1118,11 +1131,12 @@ public class PDFFile {
                     this.encrypt.setObjectId(PDFObject.OBJ_NUM_TRAILER,
                             PDFObject.OBJ_NUM_TRAILER);
                 }
-                newDefaultDecrypter =
-                        PDFDecrypterFactory.createDecryptor(
-                                this.encrypt,
-                                trailerdict.getDictRef("ID"),
-                                password);
+
+                if (this.encrypt != null && !PDFDecrypterFactory.isFilterExist(this.encrypt)) {
+                    this.encrypt = null; // the filter is not located at this trailer, we will try later again
+                } else {
+                    newDefaultDecrypter = PDFDecrypterFactory.createDecryptor(this.encrypt, trailerdict.getDictRef("ID"), password);
+                }
             }
 
 
@@ -1292,14 +1306,14 @@ public class PDFFile {
                 if (this.encrypt != null) {
                     this.encrypt.setObjectId(PDFObject.OBJ_NUM_TRAILER,
                             PDFObject.OBJ_NUM_TRAILER);
-                }
-                newDefaultDecrypter =
-                        PDFDecrypterFactory.createDecryptor(
-                                this.encrypt,
-                                trailerdict.get("ID"),
-                                password);
-            }
 
+                }
+                if (this.encrypt != null && !PDFDecrypterFactory.isFilterExist(this.encrypt)) {
+                    this.encrypt = null; // the filter is not located at this trailer, we will try later again
+                } else {
+                    newDefaultDecrypter = PDFDecrypterFactory.createDecryptor(this.encrypt, trailerdict.get("ID"), password);
+                }
+            }
 
             if (this.info == null) {
                 this.info = trailerdict.get("Info");
@@ -1387,7 +1401,7 @@ public class PDFFile {
             // find startxref in scan
             String scans = new String(scan);
             loc = scans.indexOf("startxref");
-            if (loc > 0) {
+            if (loc >= 0) {
                 if (scanPos + loc + scan.length <= this.buf.limit()) {
                     scanPos = scanPos + loc;
                     loc = 0;
@@ -1568,7 +1582,6 @@ public class PDFFile {
         Integer key = Integer.valueOf(pagenum);
         HashMap<String,PDFObject> resources = null;
         PDFObject pageObj = null;
-        boolean needread = false;
 
         PDFPage page = this.cache.getPage(key);
         PDFParser parser = this.cache.getPageParser(key);
@@ -1595,9 +1608,14 @@ public class PDFFile {
             }
         }
 
-        if (parser != null && !parser.isFinished()) {
-            parser.go(wait);
-        }
+		if (parser != null) {
+			if (!parser.isFinished()) {
+				parser.go(wait);
+			}
+			if (parser.getStatus() == Watchable.ERROR) {
+				PDFDebugger.debug("Error in parsing the PDF page!");
+			}
+		}
 
         return page;
     }
@@ -1666,8 +1684,9 @@ public class PDFFile {
     private PDFPage createPage(int pagenum, PDFObject pageObj)
             throws IOException {
         int rotation = 0;
-        Rectangle2D mediabox = null; // second choice, if no crop
-        Rectangle2D cropbox = null;  // first choice
+        Rectangle2D mediabox = null; // third choice, if no crop
+        Rectangle2D cropbox = null; // second choice
+        Rectangle2D trimbox = null; // first choice
 
         PDFObject mediaboxObj = getInheritedValue(pageObj, "MediaBox");
         if (mediaboxObj != null) {
@@ -1677,6 +1696,11 @@ public class PDFFile {
         PDFObject cropboxObj = getInheritedValue(pageObj, "CropBox");
         if (cropboxObj != null) {
             cropbox = parseNormalisedRectangle(cropboxObj);
+        }
+
+        PDFObject trimboxObj = getInheritedValue(pageObj, "TrimBox");
+        if (trimboxObj != null) {
+            trimbox = parseNormalisedRectangle(trimboxObj);
         }
 
         PDFObject rotateObj = getInheritedValue(pageObj, "Rotate");
@@ -1704,7 +1728,7 @@ public class PDFFile {
 			}            
         }
         
-        Rectangle2D bbox = ((cropbox == null) ? mediabox : cropbox);
+        Rectangle2D bbox = (trimbox == null ? ((cropbox == null) ? mediabox : cropbox) : trimbox);
         PDFPage page = new PDFPage(pagenum, bbox, rotation, this.cache);
         page.setAnnots(annotationList);
         return page;

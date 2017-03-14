@@ -264,23 +264,23 @@ public class PDFTextFormat implements Cloneable {
     * @param text
     * the text to add
     */
-    public void doText(PDFPage cmds, String text) {
+    public void doText(PDFPage cmds, String text, boolean autoAdjustStroke) {
         Point2D.Float zero = new Point2D.Float();
         AffineTransform scale = new AffineTransform(this.fsize * this.th, 0, /* 0 */
         0, this.fsize, /* 0 */
         0, this.tr /* 1 */);
         AffineTransform at = new AffineTransform();
         List<PDFGlyph> l = this.font.getGlyphs(text);
-        if (PDFParser.SHOW_TEXT_ANCHOR) {
-            if (PDFParser.DEBUG_TEXT) {
-                System.out.println("POINT count: " + l.size());
+        if (PDFDebugger.SHOW_TEXT_ANCHOR) {
+            if (PDFDebugger.DEBUG_TEXT) {
+                PDFDebugger.debug("POINT count: " + l.size());
             }
         }
         for (Iterator<PDFGlyph> i = l.iterator(); i.hasNext();) {
             PDFGlyph glyph = i.next();
             at.setTransform(this.cur);
             at.concatenate(scale);
-            if (PDFParser.SHOW_TEXT_REGIONS) {
+            if (PDFDebugger.SHOW_TEXT_REGIONS) {
                 GeneralPath path = new GeneralPath();
                 path.moveTo(0, 0);
                 path.lineTo(1, 0);
@@ -289,21 +289,21 @@ public class PDFTextFormat implements Cloneable {
                 path.lineTo(0, 0);
                 path.closePath();
                 path = (GeneralPath) path.createTransformedShape(at);
-                if (PDFParser.DEBUG_TEXT) {
-                    System.out.println("BOX " + path.getBounds());
+                if (PDFDebugger.DEBUG_TEXT) {
+                    PDFDebugger.debug("BOX " + path.getBounds());
                 }
                 PDFCmd lastColor = cmds.findLastCommand(PDFFillPaintCmd.class);
-                if (PDFParser.DEBUG_TEXT) {
-                    System.out.println("BOX " + lastColor);
+                if (PDFDebugger.DEBUG_TEXT) {
+                    PDFDebugger.debug("BOX " + lastColor);
                 }
                 cmds.addFillPaint(PDFPaint.getColorPaint(new Color(160, 160, 255)));
-                cmds.addPath(path, PDFShapeCmd.FILL);
+                cmds.addPath(path, PDFShapeCmd.FILL, autoAdjustStroke);
                 if (lastColor != null) {
                     cmds.addCommand(lastColor);
                 }
             }
             Point2D advance = glyph.getAdvance();
-            if (!PDFParser.DISABLE_TEXT) {
+            if (!PDFDebugger.DISABLE_TEXT) {
                 advance = glyph.addCommands(cmds, at, this.tm);
             }
             double advanceX = (advance.getX() * this.fsize) + this.tc;
@@ -312,7 +312,7 @@ public class PDFTextFormat implements Cloneable {
                 advanceX += this.tw;
             }
             advanceX *= this.th;
-            if (PDFParser.SHOW_TEXT_ANCHOR) {
+            if (PDFDebugger.SHOW_TEXT_ANCHOR) {
                 AffineTransform at2 = new AffineTransform();
                 at2.setTransform(this.cur);
                 GeneralPath path = new GeneralPath();
@@ -323,12 +323,12 @@ public class PDFTextFormat implements Cloneable {
                 path.lineTo(0, 0);
                 path.closePath();
                 path = (GeneralPath) path.createTransformedShape(at2);
-                if (PDFParser.DEBUG_TEXT) {
-                    System.out.println("POINT " + advance);
+                if (PDFDebugger.DEBUG_TEXT) {
+                    PDFDebugger.debug("POINT " + advance);
                 }
                 PDFCmd lastColor = cmds.findLastCommand(PDFFillPaintCmd.class);
                 cmds.addFillPaint(PDFPaint.getColorPaint(new Color(255, 0, 0)));
-                cmds.addPath(path, PDFShapeCmd.FILL);
+                cmds.addPath(path, PDFShapeCmd.FILL, autoAdjustStroke);
                 if (lastColor != null) {
                     cmds.addCommand(lastColor);
                 }
@@ -348,10 +348,10 @@ public class PDFTextFormat implements Cloneable {
     * represent text to be added, and the Doubles represent kerning
     * amounts.
     */
-    public void doText(PDFPage cmds, Object ary[]) throws PDFParseException {
+    public void doText(PDFPage cmds, Object ary[], boolean autoAdjustStroke) throws PDFParseException {
         for (int i = 0; i < ary.length; i++) {
             if (ary[i] instanceof String) {
-                doText(cmds, (String) ary[i]);
+                doText(cmds, (String) ary[i], autoAdjustStroke);
             } else if (ary[i] instanceof Double) {
                 float val = ((Double) ary[i]).floatValue() / 1000f;
                 this.cur.translate(-val * this.fsize * this.th, 0);

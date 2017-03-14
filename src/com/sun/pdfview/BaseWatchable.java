@@ -36,6 +36,10 @@ public abstract class BaseWatchable implements Watchable, Runnable {
     private static boolean SuppressSetErrorStackTrace = false;
     /** the thread we are running in */
     private Thread thread;
+    private Exception exception;
+    
+    // handle exceptions via this class
+    private static PDFErrorHandler errorHandler = new PDFErrorHandler(); 
 
     /** 
      * Creates a new instance of BaseWatchable
@@ -76,8 +80,6 @@ public abstract class BaseWatchable implements Watchable, Runnable {
 
     @Override
 	public void run() {
-        // System.out.println(Thread.currentThread().getName() + " starting");
-
         try {
             Thread.sleep(1);
             // call setup once we started
@@ -116,7 +118,6 @@ public abstract class BaseWatchable implements Watchable, Runnable {
                             setError(ex);
                         }
                     } else {
-                        // System.out.println(getName() + " waiting: status = " + getStatusString());
                         // wait for our status to change
                         synchronized (this.statusLock) {
                             if (!isExecutable()) {
@@ -130,16 +131,13 @@ public abstract class BaseWatchable implements Watchable, Runnable {
                     }
                 }
             }
-
-            // System.out.println(Thread.currentThread().getName() + " exiting: status = " + getStatusString());
-
             // call cleanup when we are done
             if (getStatus() == Watchable.COMPLETED || getStatus() == Watchable.ERROR) {
 
                 cleanup();
             }
         } catch (InterruptedException e) {
-            System.out.println("Interrupted.");
+            PDFDebugger.debug("Interrupted.");
         }
         // notify that we are no longer running
         this.thread = null;
@@ -284,7 +282,7 @@ public abstract class BaseWatchable implements Watchable, Runnable {
                     @Override
                     public void uncaughtException( Thread th, Throwable ex )
                     {
-                        System.out.println( "Uncaught exception: " + ex );
+                        PDFDebugger.debug( "Uncaught exception: " + ex );
                     }
                 };
                 thread.setUncaughtExceptionHandler( h );
@@ -304,8 +302,6 @@ public abstract class BaseWatchable implements Watchable, Runnable {
     protected void setStatus(int status) {
         synchronized (this.statusLock) {
             this.status = status;
-
-            // System.out.println(getName() + " status set to " + getStatusString());
 
             this.statusLock.notifyAll();
         }
@@ -333,34 +329,17 @@ public abstract class BaseWatchable implements Watchable, Runnable {
      * Set an error on this watchable
      */
     protected void setError(Exception error) {
+    	exception = error;
         if (!SuppressSetErrorStackTrace) {
-            error.printStackTrace();
+            errorHandler.publishException(error);
         }
 
         setStatus(Watchable.ERROR);
     }
 
-    private String getStatusString() {
-        switch (getStatus()) {
-            case Watchable.NOT_STARTED:
-                return "Not started";
-            case Watchable.RUNNING:
-                return "Running";
-            case Watchable.NEEDS_DATA:
-                return "Needs Data";
-            case Watchable.PAUSED:
-                return "Paused";
-            case Watchable.STOPPED:
-                return "Stopped";
-            case Watchable.COMPLETED:
-                return "Completed";
-            case Watchable.ERROR:
-                return "Error";
-            default:
-                return "Unknown";
-
-        }
-    }
+	public Exception getException() {
+		return exception;
+	}
 
     /** A class that lets us give it a target time or number of steps,
      * and will tell us to stop after that much time or that many steps
@@ -404,5 +383,16 @@ public abstract class BaseWatchable implements Watchable, Runnable {
 
             return stop();
         }
+    }
+    
+    public static void setErrorHandler(PDFErrorHandler e) {
+        errorHandler = e;
+    }
+    
+    public static PDFErrorHandler getErrorHandler(){
+        if(errorHandler == null) {
+            errorHandler = new PDFErrorHandler();
+        }
+        return errorHandler;
     }
 }

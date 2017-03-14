@@ -67,18 +67,8 @@ public class TTFFont extends OutlineFont {
             throws IOException {
         super (baseFont, fontObj, descriptor);
 
-        String fontName = descriptor.getFontName ();
         PDFObject ttfObj = descriptor.getFontFile2 ();
 
-        // try {
-        //    byte[] fontData = ttfObj.getStream();
-        //    java.io.FileOutputStream fis = new java.io.FileOutputStream("/tmp/" + fontName + ".ttf");
-        //    fis.write(fontData);
-        //    fis.flush();
-        //    fis.close();
-        // } catch (Exception ex) {
-        //    ex.printStackTrace();
-        // }
         if (ttfObj != null || fontFile != null) {
             if (ttfObj != null) {
                 font = TrueTypeFont.parseFont (ttfObj.getStreamBuffer ());
@@ -108,8 +98,6 @@ public class TTFFont extends OutlineFont {
         } else {
             font = null;
         }
-//        System.out.println ("TTFFont: ttfObj: " + ttfObj + ", fontName: " + fontName);
-
     }
 
     public Collection<String> getNames()
@@ -139,6 +127,19 @@ public class TTFFont extends OutlineFont {
             if (idx != 0) {
                 return getOutline (idx, width);
             }
+        }
+        
+        // windows symbol font CMap may use one of the following code ranges
+        if (src >= 0 && src <= 0xFF) {
+        	int[] symbolPages = new int[]{0xF000, 0xF100, 0xF200};        	
+        	for (int codePage : symbolPages) {
+                for (int i = 0; i < maps.length; i++) {
+                    int idx = maps[i].map ( (char)(src | codePage));
+                    if (idx != 0) {
+                        return getOutline (idx, width);
+                    }
+                }        					
+			}
         }
 
         // not found, return the empty glyph
@@ -187,7 +188,6 @@ public class TTFFont extends OutlineFont {
             if (idx != 0) {
                 return getOutline (idx, width);
             }
-            return null;
         }
 
         Integer res = AdobeGlyphList.getGlyphNameIndex (name);
@@ -222,10 +222,11 @@ public class TTFFont extends OutlineFont {
         // scale the glyph to match the desired advance
         float widthfactor = width / advance;
 
-        // the base transform scales the glyph to 1x1
-        AffineTransform at = AffineTransform.getScaleInstance (1 / this.unitsPerEm,
-                1 / this.unitsPerEm);
-        at.concatenate (AffineTransform.getScaleInstance (widthfactor, 1));
+		// the base transform scales the glyph to 1x1
+		AffineTransform at = AffineTransform.getScaleInstance(1 / this.unitsPerEm, 1 / this.unitsPerEm);
+		if (advance != 0) {
+			at.concatenate(AffineTransform.getScaleInstance(widthfactor, 1));
+		}
 
         gp.transform (at);
 

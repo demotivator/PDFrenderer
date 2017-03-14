@@ -93,9 +93,12 @@ public class PDFPage {
         if (bbox == null) {
             bbox = new Rectangle2D.Float(0, 0, 1, 1);
         }
+        rotation = rotation % 360; // less than a full turn
         if (rotation < 0) {
             rotation += 360;
         }
+        rotation = rotation / 90; // for page rotation use only multiples of 90 degrees 
+        rotation = rotation * 90; // 0, 90, 180, 270
         this.rotation = rotation;
         if (rotation == 90 || rotation == 270) {
             bbox = new Rectangle2D.Double(bbox.getX(), bbox.getY(), bbox.getHeight(), bbox.getWidth());
@@ -219,9 +222,13 @@ public class PDFPage {
             if (observer != null) {
                 renderer.addObserver(observer);
             }
-            if (!renderer.isFinished()) {
-                renderer.go(wait);
-            }
+            
+			if (!renderer.isFinished()) {
+				renderer.go(wait);
+				if (renderer.getStatus() == Watchable.ERROR) {
+					PDFDebugger.debug("Error during reading image!");
+				}
+			}
         }
         // return the image
         return image;
@@ -471,7 +478,7 @@ public class PDFPage {
     * observers will be notified.
     */
     public synchronized void finish() {
-        // System.out.println("Page finished!");
+        PDFDebugger.debug("Page finished!", 1000);
         this.finished = true;
         notifyAll();
         // notify any outstanding images
@@ -501,13 +508,14 @@ public class PDFPage {
     * @param w
     * the width of the stroke
     */
-    public void addStrokeWidth(float w) {
+    public PDFChangeStrokeCmd addStrokeWidth(float w) {
         PDFChangeStrokeCmd sc = new PDFChangeStrokeCmd();
         // if (w == 0) {
         // w = 0.1f;
         // }
         sc.setWidth(w);
         addCommand(sc);
+        return sc;
     }
 
     /**
@@ -588,10 +596,11 @@ public class PDFPage {
     * the path
     * @param style
     * the style: PDFShapeCmd.STROKE, PDFShapeCmd.FILL,
+    * @param autoAdjustStroke
     * PDFShapeCmd.BOTH, PDFShapeCmd.CLIP, or some combination.
     */
-    public void addPath(GeneralPath path, int style) {
-        addCommand(new PDFShapeCmd(path, style));
+    public void addPath(GeneralPath path, int style, boolean autoAdjustStroke) {
+        addCommand(new PDFShapeCmd(path, style, autoAdjustStroke));
     }
 
     public void addShadeCommand(PDFPaint p, Rectangle2D box) {
@@ -819,13 +828,12 @@ class PDFShadeCommand extends PDFCmd {
             try {
                 s = state.getLastTransform().createInverse().createTransformedShape(s);
             } catch (NoninvertibleTransformException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
+                BaseWatchable.getErrorHandler().publishException(e);
             }
         }
         state.setFillAlpha(1);
         state.setFillPaint(p);
-        return (new PDFShapeCmd(new GeneralPath(s), PDFShapeCmd.FILL)).execute(state);
+        return (new PDFShapeCmd(new GeneralPath(s), PDFShapeCmd.FILL, false)).execute(state);
     }
 }
 
